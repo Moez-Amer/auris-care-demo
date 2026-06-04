@@ -2,70 +2,127 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AurisLite</title>
+    <title>AurisLite SDK Demo</title>
     <style>
-        body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 40px; text-align: center; }
-        .container { max-width: 600px; margin: auto; background: #1e1e1e; padding: 25px; border-radius: 12px; }
-        button { background: #03dac6; padding: 12px 24px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; }
-        #log { margin-top: 30px; text-align: left; background: #2d2d2d; height: 250px; overflow-y: auto; padding: 15px; font-family: monospace; }
-        .result { color: #ffb74d; font-weight: bold; }
+        body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 40px; text-align: center; margin: 0; }
+        .container { max-width: 650px; margin: auto; background: #1e1e1e; padding: 25px; border-radius: 12px; }
+        button { background: #03dac6; padding: 12px 24px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; transition: 0.3s; }
+        
+        #volumeContainer { width: 100%; height: 8px; background: #333; border-radius: 4px; margin: 20px 0 10px 0; overflow: hidden; display: none; }
+        #volumeBar { height: 100%; width: 0%; background: #03dac6; transition: width 0.05s ease-out; }
+        
+        /* UI Window (User Friendly) */
+        #uiLog { text-align: left; background: #2d2d2d; height: 200px; overflow-y: auto; padding: 15px; font-family: sans-serif; border-radius: 6px; margin-top: 15px; }
+        
+        /* Dev Window (Raw Code) */
+        .dev-note { text-align: left; color: #03dac6; font-size: 12px; font-family: monospace; margin-top: 20px; margin-bottom: 5px; }
+        #devLog { text-align: left; background: #000000; height: 250px; overflow-y: auto; padding: 15px; font-family: monospace; border-radius: 6px; border: 1px solid #333; }
+        
+        pre { margin: 0; padding-bottom: 10px; border-bottom: 1px dashed #333; margin-bottom: 10px; font-size: 13px; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>aurisLite</h1>
+    <h1>LIVE DEMO <span style="font-size: 16px; color: #888; font-weight: normal;">(Powered by Auris SDK)</span></h1>
     <button id="startBtn">Start Listening</button>
-    <div id="log"></div>
+    
+    <div id="volumeContainer">
+        <div id="volumeBar"></div>
+    </div>
+    
+    <div id="uiLog"></div>
+    
+    <div class="dev-note">// RAW SDK PAYLOAD: Developers pipe this JSON into custom UIs or databases.</div>
+    <div id="devLog"></div>
 </div>
 <script>
     const startBtn = document.getElementById('startBtn');
-    const logDiv = document.getElementById('log');
+    const uiLogDiv = document.getElementById('uiLog');
+    const devLogDiv = document.getElementById('devLog');
+    const volumeContainer = document.getElementById('volumeContainer');
+    const volumeBar = document.getElementById('volumeBar');
     let socket, audioContext, processor, globalStream;
 
-    function log(msg) {
-        logDiv.innerHTML = `<div>> ${msg}</div>` + logDiv.innerHTML;
+    function logStatus(msg) {
+        uiLogDiv.innerHTML = `<div style="color: #888; margin-bottom: 10px;">> ${msg}</div>` + uiLogDiv.innerHTML;
+        devLogDiv.innerHTML += `<div style="color: #888; margin-bottom: 10px;">> ${msg}</div>`;
+        devLogDiv.scrollTop = devLogDiv.scrollHeight;
     }
 
     startBtn.addEventListener('click', async () => {
         if (audioContext) { stopListening(); return; }
         
-        // APPLE SAFARI FIX: We must wake up the audio engine instantly on click!
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
         audioContext.resume(); 
 
-        log("Requesting microphone...");
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             globalStream = stream;
-            log("Microphone access granted.");
             
             const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
             const wsUrl = wsProtocol + window.location.host + "/ws";
-            log("Connecting to backend...");
             
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                log("Connected to AI successfully!");
+                logStatus("🟢 Connected to hardware & monitoring for priority events...");
                 startBtn.textContent = "Stop Listening";
                 startBtn.style.background = "#cf6679";
+                volumeContainer.style.display = "block"; 
                 startAudioProcessing(stream);
             };
 
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                log(`Heard: <span class="result">${data.class}</span> (${data.confidence})`);
+                const confPct = Math.round(data.confidence * 100);
+                
+                // 1. GENERATE USER UI (Color Badges)
+                let displayHtml = "";
+                if (confPct >= 70) {
+                    if (data.group === 1) {
+                        displayHtml = `<span style="background: #cf6679; color: #fff; padding: 4px 8px; border-radius: 4px; font-weight: bold;">🚨 ${data.class} (${confPct}%)</span>`;
+                    } else if (data.group === 2) {
+                        displayHtml = `<span style="background: #ffb74d; color: #000; padding: 4px 8px; border-radius: 4px; font-weight: bold;">🩺 ${data.class} (${confPct}%)</span>`;
+                    }
+                } else {
+                    displayHtml = `<span style="color: #888;">${data.class} (${confPct}% - Accuracy < 70%)</span>`;
+                }
+                
+                uiLogDiv.innerHTML = `<div style="margin-bottom: 10px; font-size: 15px;">> ${displayHtml}</div>` + uiLogDiv.innerHTML;
+
+                // 2. GENERATE SDK PAYLOAD (JSON)
+                const sdkPayload = {
+                    eventId: "evt_" + Math.random().toString(36).substring(2, 9),
+                    timestamp: new Date().toISOString(),
+                    audioEvent: {
+                        classification: data.class,
+                        confidenceScore: confPct,
+                        isActionable: confPct >= 70,
+                        priorityLevel: data.group === 1 ? "CRITICAL" : (data.group === 2 ? "MONITOR" : "LOW")
+                    }
+                };
+
+                const jsonString = JSON.stringify(sdkPayload, null, 2);
+                let devColor = "#888"; 
+                if (confPct >= 70) {
+                    if (data.group === 1) devColor = "#cf6679";
+                    else if (data.group === 2) devColor = "#ffb74d";
+                }
+                
+                devLogDiv.innerHTML += `<pre style="color: ${devColor};">${jsonString}</pre>`;
+                devLogDiv.scrollTop = devLogDiv.scrollHeight; 
             };
 
             socket.onerror = (error) => {
-                log("❌ ERROR: Safari blocked the background connection due to the self-signed certificate.");
+                logStatus("❌ ERROR: Connection failed.");
             };
             
             socket.onclose = () => {
-                log("Connection closed.");
+                logStatus("Connection closed.");
                 stopListening();
-            }
-        } catch (err) { log("Error: " + err.message); }
+            };
+
+        } catch (err) { logStatus("Error: " + err.message); }
     });
 
     function startAudioProcessing(stream) {
@@ -75,8 +132,17 @@
         processor.connect(audioContext.destination);
 
         processor.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i++) {
+                sum += inputData[i] * inputData[i];
+            }
+            let rms = Math.sqrt(sum / inputData.length);
+            let volumePct = Math.min(100, rms * 400); 
+            volumeBar.style.width = volumePct + '%';
+
             if (socket && socket.readyState === WebSocket.OPEN) {
-                const inputData = e.inputBuffer.getChannelData(0);
                 const int16Buffer = new Int16Array(inputData.length);
                 for (let i = 0; i < inputData.length; i++) {
                     int16Buffer[i] = Math.min(1, Math.max(-1, inputData[i])) * 0x7FFF;
@@ -89,15 +155,13 @@
     function stopListening() {
         startBtn.textContent = "Start Listening";
         startBtn.style.background = "#03dac6";
+        volumeContainer.style.display = "none";
+        volumeBar.style.width = "0%";
         if (processor) processor.disconnect();
         if (audioContext) audioContext.close();
         if (globalStream) globalStream.getTracks().forEach(t => t.stop());
         if (socket) socket.close();
         audioContext = null;
-    }
-
-    function log(msg) {
-        logDiv.innerHTML = `<div>> ${msg}</div>` + logDiv.innerHTML;
     }
 </script>
 </body>

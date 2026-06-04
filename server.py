@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 import numpy as np
 from model import YamnetClassifier
@@ -31,13 +31,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 sound_class, confidence = classifier.classify_audio(input_data)
                 
-                response = {
-                    "class": sound_class,
-                    "confidence": f"{confidence * 100:.1f}%"
-                }
-                await websocket.send_text(json.dumps(response))
+                # Check for care home keywords
+                lower_class = sound_class.lower()
+                group = 0
                 
+                group_1_keys = ["screaming", "crying", "sobbing", "wail", "moan", "groan", "grunt", "gasp", "fire alarm", "smoke detector", "siren", "glass", "shatter", "thump", "thud"]
+                group_2_keys = ["cough", "wheeze", "sneeze", "sniff", "throat", "snoring", "breathing", "pant", "vomiting"]
+                
+                if any(kw in lower_class for kw in group_1_keys):
+                    group = 1
+                elif any(kw in lower_class for kw in group_2_keys):
+                    group = 2
+                    
+                # Only send data to the phone if it is in Group 1 or Group 2
+                if group > 0:
+                    response = {
+                        "class": sound_class,
+                        "confidence": float(confidence), # Send the raw math number to the browser
+                        "group": group
+                    }
+                    await websocket.send_text(json.dumps(response))
+                
+    except WebSocketDisconnect:
+        print("Client stopped listening and disconnected cleanly.")
     except Exception as e:
-        print(f"Connection closed: {e}")
-    finally:
-        await websocket.close()
+        print(f"An unexpected error occurred: {e}")
