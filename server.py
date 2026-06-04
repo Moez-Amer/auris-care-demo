@@ -1,8 +1,3 @@
-Here is the fully updated `server.py` file, ready to copy and paste.
-
-I have added the **streak counter** (debouncing) directly into the WebSocket loop so it tracks consecutive screams or shouts, implemented the **>70% confidence threshold**, and added the **sliding window** (`audio_buffer[7800:]`) to instantly double your accuracy.
-
-```python
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -94,4 +89,3 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client stopped listening and disconnected cleanly.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        
