@@ -1,43 +1,44 @@
-# AurisLite
+# Auris SDK: Live Care Monitor Demo
 
-A lightweight, real-time audio classification engine. AurisLite captures live audio from a web browser (desktop or mobile), streams it over WebSockets to a local Python backend, and uses Google's YAMNet machine learning model to instantly classify the sounds being heard.
+A live demonstration of the **Auris SDK**: a real-time audio intelligence layer for healthcare environments. It captures browser audio, streams it to a Python backend via WebSockets, filters for critical events using YAMNet, and returns actionable JSON payloads.
 
-## Tech Stack
-* **AI Model:** TensorFlow / YAMNet
-* **Backend:** FastAPI, Uvicorn, WebSockets
+## 🚀 Key Features
+
+* **Targeted Filtering:** Isolates coughs, falls, and alarms while ignoring background noise.
+* **Confidence Thresholds:** Requires >70% confidence to prevent false alarms.
+* **Dual-Pane UI:** Displays visual alerts alongside a real-time JSON payload console.
+* **Live Feedback:** Includes a reactive audio volume visualizer.
+
+## 🛠 Tech Stack
+
+* **AI:** TensorFlow / YAMNet
+* **Backend:** Python, FastAPI, Uvicorn, WebSockets
 * **Frontend:** Vanilla HTML/JS, AudioContext API
+* **Security:** Local SSL
 
 ---
 
-## How to Run the App
+## ⚙️ Initial Setup
 
-Whenever you want to start the application, open your terminal in this folder and follow these two steps:
+Run these commands once to configure the environment and generate security keys:
 
-### 1. Activate the Environment
-You must turn on the isolated Python environment first:
-```bash
+python3 -m venv venv
 source venv/bin/activate
-```
-*(You will know it worked when your terminal prompt starts with `(venv)`)*
-
-### 2. Start the Secure Server
-Because modern smartphones block microphone access on plain HTTP connections, we run the server using a local self-signed SSL certificate:
-```bash
-uvicorn server:app --host 0.0.0.0 --port 8000 --ssl-keyfile=key.pem --ssl-certfile=cert.pem
-```
-
-### 3. Connect!
-* **On your Mac:** Open your browser and go to `https://localhost:8000`
-* **On your Phone:** Ensure your phone is on the same Wi-Fi as your Mac. Open Safari/Chrome and go to `https://[YOUR-MAC-IP-ADDRESS]:8000`. 
-*(Note: You will need to bypass the "Not Secure" warning because it is a self-signed certificate).*
+pip install fastapi uvicorn websockets tensorflow tensorflow-hub numpy
+openssl req -x509 -newkey rsa:2048 -nodes -out cert.pem -keyout key.pem -days 365 -subj "/CN=localhost"
 
 ---
 
-## Initial Setup (If installing on a new machine)
-If you are cloning this repository to a brand new computer, run these commands to set up the engine:
+## 💻 How to Run
 
-1. Create the virtual environment: `python3 -m venv venv`
-2. Activate it: `source venv/bin/activate`
-3. Install dependencies: `pip install fastapi uvicorn websockets tensorflow tensorflow-hub numpy`
-4. Generate local security keys (for mobile testing): 
-   `openssl req -x509 -newkey rsa:2048 -nodes -out cert.pem -keyout key.pem -days 365 -subj "/CN=localhost"`
+Start the application from your project folder:
+
+source venv/bin/activate
+uvicorn server:app --host 0.0.0.0 --port 8000 --ssl-keyfile=key.pem --ssl-certfile=cert.pem
+
+## 📱 Connect
+
+* **On your Mac:** Navigate to https://localhost:8000
+* **On your Phone:** Ensure you are on the same Wi-Fi as your Mac. Navigate to https://[YOUR-MAC-IP-ADDRESS]:8000
+
+> **Note:** Because the app uses local self-signed certificates for secure microphone access, you must bypass the "Not Secure" warning in your mobile browser to connect.
