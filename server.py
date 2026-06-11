@@ -1,12 +1,27 @@
 import asyncio
+import time
 import websockets
 import json
 import numpy as np
 from model import AudioClassifier
+from signal_utils import CooldownGate
 
-# Only events at/above this confidence are shown in the UI. Everything above the
-# model's own 5% floor is still printed to the terminal. Tune for your room/mic.
-UI_CONFIDENCE_FLOOR = 0.05
+# --- Demo tuning knobs -------------------------------------------------------
+# Only events at/above this confidence reach the UI. The terminal still logs
+# everything above the model's lower TERMINAL_DETECTION_FLOOR (see model.py),
+# so the two floors are now genuinely different. Tune for your room/mic.
+UI_CONFIDENCE_FLOOR = 0.30
+# Per-category minimum gap between UI alerts, so a sustained sound (a held
+# alarm, a long cry) shows as ONE clean card instead of one per window.
+COOLDOWN_SECONDS = 3.0
+# Sliding analysis window: classify WINDOW_SAMPLES at a time, advancing by
+# HOP_SAMPLES each step. Overlap (50% here) stops an event that straddles a
+# hard window boundary from being split into two weak halves and missed.
+WINDOW_SAMPLES = 16000   # 1.0 s @ 16 kHz
+HOP_SAMPLES = 8000       # advance 0.5 s -> 50% overlap
+# If inference can't keep up and audio backs up, drop stale samples so latency
+# stays low — better for a live demo than an ever-growing lag.
+MAX_BACKLOG_SAMPLES = 48000  # ~3 s
 
 print("Loading Heavy AST Model... (This will take a moment)")
 classifier = AudioClassifier()
@@ -16,7 +31,7 @@ async def handle_audio_stream(websocket):
     print("💻 Local Interface Connected! Listening for audio...")
     
     audio_buffer = np.array([], dtype=np.float32)
-    required_samples = 16000 # 1-second chunks
+    cooldown = CooldownGate(COOLDOWN_SECONDS)
 
     try:
         async for message in websocket:
@@ -24,22 +39,23 @@ async def handle_audio_stream(websocket):
             data = np.frombuffer(message, dtype=np.int16).astype(np.float32) / 32768.0
             audio_buffer = np.append(audio_buffer, data)
 
-            if len(audio_buffer) >= required_samples:
-                input_data = audio_buffer[:required_samples]
-                audio_buffer = audio_buffer[required_samples:]
+            # Slide a window across the buffer with overlap (see HOP_SAMPLES).
+            while len(audio_buffer) >= WINDOW_SAMPLES:
+                window = audio_buffer[:WINDOW_SAMPLES]
+                audio_buffer = audio_buffer[HOP_SAMPLES:]
 
                 # Ask the brain what it heard
-                tier, category, specific_sound, confidence = classifier.classify_audio(input_data)
+                tier, category, specific_sound, confidence = classifier.classify_audio(window)
 
                 if category != "Background Noise":
                     # Log EVERY detection to the terminal (with confidence) so we
                     # can see the full picture during testing/demo.
                     print(f"  [{tier:8s}] {category} ({specific_sound}) — {confidence*100:.0f}%")
 
-                    # Only forward confident detections to the UI. Low-confidence
-                    # blips (background noise mislabeled at ~5-25%) are real model
-                    # outputs but too noisy to show an audience — suppress them.
-                    if confidence >= UI_CONFIDENCE_FLOOR:
+                    # Forward to the UI only when it's (a) confident enough AND
+                    # (b) not a repeat of a category that just fired. The cooldown
+                    # collapses a sustained sound into a single clean alert.
+                    if confidence >= UI_CONFIDENCE_FLOOR and cooldown.allow(category, time.time()):
                         # Map the tier to a UI group: 1=CRITICAL, 2=URGENT, 3=ADVISORY.
                         group_num = {"CRITICAL": 1, "URGENT": 2, "ADVISORY": 3}.get(tier, 3)
 
@@ -52,7 +68,12 @@ async def handle_audio_stream(websocket):
                         }
 
                         await websocket.send(json.dumps(payload))
-                    
+
+            # Keep latency low if inference falls behind realtime: never let the
+            # backlog grow without bound — jump to the most recent window.
+            if len(audio_buffer) > MAX_BACKLOG_SAMPLES:
+                audio_buffer = audio_buffer[-WINDOW_SAMPLES:]
+
     except websockets.exceptions.ConnectionClosed:
         print("💻 Interface closed.")
     except Exception as e:

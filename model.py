@@ -1,9 +1,19 @@
 import torch
 import numpy as np
 from transformers import AutoProcessor, ASTForAudioClassification
+from signal_utils import is_silent
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# --- Demo tuning knobs -------------------------------------------------------
+# Frames quieter than this (dBFS) are treated as silence and never classified.
+# This replaces the old peak-normalisation, which amplified a quiet room's
+# noise floor to full scale and made the model "hear" events in silence.
+SILENCE_FLOOR_DBFS = -45.0
+# Lowest score the model will *return*, so the terminal can log the full
+# picture during testing. The UI applies its own, stricter floor in server.py.
+TERMINAL_DETECTION_FLOOR = 0.10
 
 class AudioClassifier:
     def __init__(self):
@@ -25,7 +35,10 @@ class AudioClassifier:
         # 527-class AudioSet ontology.
         self.target_categories = {
             "Fall / Heavy Impact": {
-                "labels": {"thump, thud", "thunk", "bang", "slam", "smash, crash", "clatter", "knock"},
+                # "smash, crash" deliberately lives ONLY in Aggression / Breakage
+                # below — having it in two categories let dict order decide the
+                # tier (a dropped glass reported as a CRITICAL fall).
+                "labels": {"thump, thud", "thunk", "bang", "slam", "clatter", "knock"},
                 "tier": "CRITICAL"},
             "Choking / Gasping": {
                 "labels": {"gasp", "wheeze", "pant"},
@@ -34,8 +47,10 @@ class AudioClassifier:
                 "labels": {"screaming", "shout", "yell", "bellow", "whoop", "children shouting"},
                 "tier": "CRITICAL"},
             "Fire / Smoke Alarm": {
-                "labels": {"smoke detector, smoke alarm", "fire alarm", "siren", "civil defense siren",
-                           "emergency vehicle", "ambulance (siren)", "police car (siren)"},
+                # Indoor fire/smoke alarms ONLY. Outdoor traffic sirens
+                # (ambulance / police / emergency vehicle / civil-defense) were
+                # removed — a car passing a window fired a CRITICAL fire alert.
+                "labels": {"smoke detector, smoke alarm", "fire alarm"},
                 "tier": "CRITICAL"},
             "Crying / Pain": {
                 # Human distress only — deliberately excludes "Whimper (dog)",
@@ -61,9 +76,11 @@ class AudioClassifier:
 
     def classify_audio(self, audio_data):
         try:
-            max_amp = np.max(np.abs(audio_data))
-            if max_amp > 0:
-                audio_data = audio_data / max_amp 
+            # Skip near-silent frames outright instead of peak-normalising them.
+            # (Dividing by max amplitude used to boost a silent room to full
+            # scale, manufacturing phantom detections out of background hiss.)
+            if is_silent(audio_data, SILENCE_FLOOR_DBFS):
+                return "NONE", "Background Noise", "None", 0.0
 
             inputs = self.processor(audio_data, sampling_rate=16000, return_tensors="pt")
             
@@ -91,7 +108,7 @@ class AudioClassifier:
                             best_specific_sound = self.labels[i]
                             best_tier = cfg["tier"]
 
-            if best_score > 0.05 and best_category != "Background Noise":
+            if best_score >= TERMINAL_DETECTION_FLOOR and best_category != "Background Noise":
                 return best_tier, best_category, best_specific_sound, best_score
             else:
                 return "NONE", "Background Noise", "None", 0.0
