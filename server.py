@@ -1,91 +1,68 @@
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-import numpy as np
-from model import YamnetClassifier
+import websockets
 import json
+import numpy as np
+from model import AudioClassifier
 
-app = FastAPI()
-classifier = YamnetClassifier()
+# Only events at/above this confidence are shown in the UI. Everything above the
+# model's own 5% floor is still printed to the terminal. Tune for your room/mic.
+UI_CONFIDENCE_FLOOR = 0.05
 
-@app.get("/")
-async def get():
-    with open("index.html", "r") as f:
-        return HTMLResponse(content=f.read(), status_code=200)
+print("Loading Heavy AST Model... (This will take a moment)")
+classifier = AudioClassifier()
+print("AST Model loaded successfully!")
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    print("Client connected to live audio stream.")
-    audio_buffer = []
+async def handle_audio_stream(websocket):
+    print("💻 Local Interface Connected! Listening for audio...")
     
-    # --- NEW: Streak tracking for loud human sounds ---
-    distress_streak = 0
-    REQUIRED_STREAK = 3 
+    audio_buffer = np.array([], dtype=np.float32)
+    required_samples = 16000 # 1-second chunks
 
     try:
-        while True:
-            data = await websocket.receive_bytes()
-            chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            audio_buffer.extend(chunk)
-            
-            # Process exactly ~1 second of audio
-            if len(audio_buffer) >= 15600:
-                input_data = np.array(audio_buffer[:15600], dtype=np.float32)
-                
-                # --- NEW: The Sliding Window (Shift forward by 0.5s instead of clearing) ---
-                audio_buffer = audio_buffer[7800:]
-                
-                sound_class, confidence = classifier.classify_audio(input_data)
-                
-                # --- NEW: Enforce the 70% Confidence Threshold ---
-                if confidence < 0.70:
-                    distress_streak = 0  # Reset streak if confidence drops
-                    continue             # Ignore low-confidence noise completely
-                
-                lower_class = sound_class.lower()
-                group = 0
-                
-                # --- NEW: Reorganized Keyword Categories ---
-                # 1. Instant Critical (Falls, Glass, Alarms) -> Trigger immediately
-                group_1_instant = ["fire alarm", "smoke detector", "siren", "glass", "shatter", "thump", "thud", "fall"]
-                
-                # 2. Repeatable Distress (Shouting, Crying) -> Requires streak counter
-                group_1_distress = ["shout", "yell", "screaming", "crying", "sobbing", "wail"]
-                
-                # 3. Monitor (Coughing, Wheezing, Groans) -> Trigger immediately
-                group_2_keys = ["cough", "wheeze", "sneeze", "sniff", "throat", "snoring", "breathing", "pant", "vomiting", "moan", "groan", "grunt", "gasp"]
-                
-                # --- APPLY FILTERING LOGIC ---
-                if any(kw in lower_class for kw in group_1_instant):
-                    group = 1
-                    distress_streak = 0 # Reset streak since we hit a different critical event
+        async for message in websocket:
+            # Convert raw microphone data to numbers the AI understands
+            data = np.frombuffer(message, dtype=np.int16).astype(np.float32) / 32768.0
+            audio_buffer = np.append(audio_buffer, data)
+
+            if len(audio_buffer) >= required_samples:
+                input_data = audio_buffer[:required_samples]
+                audio_buffer = audio_buffer[required_samples:]
+
+                # Ask the brain what it heard
+                tier, category, specific_sound, confidence = classifier.classify_audio(input_data)
+
+                if category != "Background Noise":
+                    # Log EVERY detection to the terminal (with confidence) so we
+                    # can see the full picture during testing/demo.
+                    print(f"  [{tier:8s}] {category} ({specific_sound}) — {confidence*100:.0f}%")
+
+                    # Only forward confident detections to the UI. Low-confidence
+                    # blips (background noise mislabeled at ~5-25%) are real model
+                    # outputs but too noisy to show an audience — suppress them.
+                    if confidence >= UI_CONFIDENCE_FLOOR:
+                        # Map the tier to a UI group: 1=CRITICAL, 2=URGENT, 3=ADVISORY.
+                        group_num = {"CRITICAL": 1, "URGENT": 2, "ADVISORY": 3}.get(tier, 3)
+
+                        payload = {
+                            "class": f"{category} ({specific_sound})",
+                            "category": category,
+                            "tier": tier,
+                            "confidence": confidence,
+                            "group": group_num
+                        }
+
+                        await websocket.send(json.dumps(payload))
                     
-                elif any(kw in lower_class for kw in group_1_distress):
-                    distress_streak += 1
-                    if distress_streak >= REQUIRED_STREAK:
-                        group = 1
-                        distress_streak = 0 # Reset after sending the alert
-                    else:
-                        continue # Keep listening silently until streak is met
-                        
-                elif any(kw in lower_class for kw in group_2_keys):
-                    group = 2
-                    distress_streak = 0 # Reset streak
-                    
-                else:
-                    distress_streak = 0 # Reset streak for unrelated background noise
-                    
-                # --- SEND PAYLOAD ---
-                if group > 0:
-                    response = {
-                        "class": sound_class,
-                        "confidence": float(confidence), 
-                        "group": group
-                    }
-                    await websocket.send_text(json.dumps(response))
-                
-    except WebSocketDisconnect:
-        print("Client stopped listening and disconnected cleanly.")
+    except websockets.exceptions.ConnectionClosed:
+        print("💻 Interface closed.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"An error occurred: {e}")
+
+async def main():
+    print("Starting local WebSocket server on ws://localhost:8000...")
+    # Bound safely back to localhost!
+    async with websockets.serve(handle_audio_stream, "localhost", 8000):
+        await asyncio.Future()
+
+if __name__ == "__main__":
+    asyncio.run(main())

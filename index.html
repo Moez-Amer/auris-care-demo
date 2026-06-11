@@ -2,159 +2,303 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AurisLite SDK Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auris — Live Care Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Outfit:wght@300;400;500&family=Space+Mono&display=swap" rel="stylesheet">
     <style>
-        body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 40px; text-align: center; margin: 0; }
-        .container { max-width: 650px; margin: auto; background: #1e1e1e; padding: 25px; border-radius: 12px; }
-        button { background: #03dac6; padding: 12px 24px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; transition: 0.3s; }
-        
-        #volumeContainer { width: 100%; height: 8px; background: #333; border-radius: 4px; margin: 20px 0 10px 0; overflow: hidden; display: none; }
-        #volumeBar { height: 100%; width: 0%; background: #03dac6; transition: width 0.05s ease-out; }
-        
-        /* UI Window (User Friendly) */
-        #uiLog { text-align: left; background: #2d2d2d; height: 200px; overflow-y: auto; padding: 15px; font-family: sans-serif; border-radius: 6px; margin-top: 15px; }
-        
-        /* Dev Window (Raw Code) */
-        .dev-note { text-align: left; color: #03dac6; font-size: 12px; font-family: monospace; margin-top: 20px; margin-bottom: 5px; }
-        #devLog { text-align: left; background: #000000; height: 250px; overflow-y: auto; padding: 15px; font-family: monospace; border-radius: 6px; border: 1px solid #333; }
-        
-        pre { margin: 0; padding-bottom: 10px; border-bottom: 1px dashed #333; margin-bottom: 10px; font-size: 13px; }
+        /* Brand palette + fonts from auris.software (same layout as before, only
+           colors and typography retuned to match the product site):
+           Outfit (sans), Cormorant Garamond (serif display), Space Mono (mono);
+           deep ink canvas with the teal #1bcda0 accent. Tier color is the single
+           functional accent set (a medical UI must signal urgency at a glance),
+           drawn to harmonize with the brand teal. */
+        :root {
+            --canvas: #07070f;            /* brand bg */
+            --canvas-soft: #0d0d1a;       /* brand bg-secondary */
+            --canvas-card: #0d0d1a;
+            --canvas-mid: #2a2a3a;
+            --hairline: #ffffff12;        /* brand hairline */
+            --hairline-soft: rgba(255,255,255,0.16);
+            --accent: #1bcda0;            /* brand teal */
+            --ink: #eee9df;               /* brand text-primary */
+            --body: #eee9df;
+            --mute: #eee9df73;            /* brand text-muted */
+            --ghost: #eee9df38;
+            /* Tiers — harmonized with the brand: advisory IS the brand teal,
+               urgent a warm gold (matches the brand code-string color), critical
+               a clear coral-red so a life-critical event still reads as urgent. */
+            --critical: #ff6b6b;
+            --urgent:   #e8c07d;          /* brand code-string gold */
+            --advisory: #1bcda0;          /* brand teal */
+            --mono: "Space Mono", ui-monospace, Menlo, monospace;
+            --serif: "Cormorant Garamond", serif;
+        }
+        /* Light (bright) theme — same brand teal + layout, inverted surfaces.
+           Every element reads from these vars, so flipping them flips the UI. */
+        body.light {
+            --canvas: #f5f4ef;            /* warm off-white (pairs with brand cream text inverted) */
+            --canvas-soft: #ffffff;
+            --canvas-card: #ffffff;
+            --canvas-mid: #c9c8c0;
+            --hairline: #00000014;
+            --hairline-soft: rgba(0,0,0,0.18);
+            --accent: #0fae87;            /* slightly deepened teal for contrast on light */
+            --ink: #16161d;
+            --body: #2c2c34;
+            --mute: #16161d80;
+            --ghost: #16161d40;
+            --critical: #e03b3b;
+            --urgent:   #b5862c;          /* darkened gold for legibility on light */
+            --advisory: #0fae87;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--canvas);
+            color: var(--body);
+            font-family: "Outfit", system-ui, sans-serif;
+            font-weight: 400;
+            letter-spacing: -0.01em;
+            padding: 64px 24px;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.25s ease, color 0.25s ease;
+        }
+        .wrap { max-width: 920px; margin: auto; }
+
+        /* Eyebrow + heading */
+        /* Brand wordmark — matches auris.software nav logo:
+           font-serif, 22px, medium (500), tracking 0.18em, teal accent. */
+        .eyebrow { margin: 0 0 12px; display: flex; align-items: baseline; gap: 10px; }
+        .eyebrow .wordmark { font-family: var(--serif); font-size: 28px; font-weight: 500; letter-spacing: 0.18em; color: var(--accent); }
+        .eyebrow .sub { font-family: var(--mono); font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); }
+        header h1 { margin: 0; font-family: var(--serif); font-size: 72px; line-height: 74px; font-weight: 400; letter-spacing: -0.5px; color: var(--ink); }
+        header p { margin: 18px 0 0; color: var(--mute); font-size: 20px; line-height: 30px; letter-spacing: -0.01em; }
+        header { margin-bottom: 48px; }
+
+        /* Controls */
+        .controls { display: flex; align-items: center; gap: 24px; margin-bottom: 32px; }
+        button {
+            font-family: "Outfit", sans-serif; font-weight: 400; font-size: 17px; line-height: 22px;
+            color: var(--accent); background: transparent;
+            border: 1px solid var(--accent); border-radius: 9999px;
+            padding: 12px 24px; cursor: pointer; transition: background 0.18s, border-color 0.18s;
+            letter-spacing: 0.02em;
+        }
+        button:hover { background: var(--accent); color: var(--canvas); }
+        button.live { background: var(--critical); color: var(--canvas); border-color: var(--critical); }
+
+        #volumeContainer { flex: 1; max-width: 260px; height: 2px; background: var(--hairline); border-radius: 9999px; overflow: hidden; display: none; }
+        #volumeBar { height: 100%; width: 0%; background: var(--accent); transition: width 0.05s linear; }
+
+        /* Tier legend */
+        .legend { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px; }
+        .legend span { font-family: var(--mono); font-size: 14px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--mute); display: inline-flex; align-items: center; gap: 8px; }
+        .dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; }
+        .dot.c { background: var(--critical); } .dot.u { background: var(--urgent); } .dot.a { background: var(--advisory); }
+
+        /* Two-up grid (1-up under 768px) */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } header h1 { font-size: 42px; line-height: 46px; } body { padding: 48px 20px; } }
+
+        .card { background: var(--canvas-card); border: 1px solid var(--hairline); border-radius: 8px; padding: 24px; transition: background 0.25s ease, border-color 0.25s ease; }
+        .card h2 { margin: 0 0 20px; font-family: var(--mono); font-size: 15px; line-height: 20px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--mute); font-weight: 400; }
+
+        /* Alert feed */
+        #alertFeed { height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding-right: 16px; }
+        #alertFeed:empty::after { content: "Listening — alerts will appear here."; color: var(--mute); font-size: 17px; letter-spacing: -0.01em; }
+        .alert {
+            display: flex; align-items: center; gap: 16px; padding: 16px 0;
+            border-bottom: 1px solid var(--hairline);
+            animation: fade 0.22s ease-out;
+        }
+        .alert:last-child { border-bottom: none; }
+        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+        .rail { width: 2px; align-self: stretch; border-radius: 9999px; background: var(--canvas-mid); }
+        .alert.critical .rail { background: var(--critical); }
+        .alert.urgent   .rail { background: var(--urgent); }
+        .alert.advisory .rail { background: var(--advisory); }
+        .alert .body { flex: 1; min-width: 0; }
+        .alert .title { font-family: var(--serif); font-size: 28px; line-height: 32px; color: var(--ink); letter-spacing: 0; }
+        .alert .meta { font-family: var(--mono); font-size: 14px; line-height: 18px; letter-spacing: 0.6px; color: var(--mute); margin-top: 5px; text-transform: uppercase; }
+        .tierTag { font-family: var(--mono); font-size: 14px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--mute); }
+        .alert.critical .tierTag { color: var(--critical); }
+        .alert.urgent   .tierTag { color: var(--urgent); }
+        .alert.advisory .tierTag { color: var(--advisory); }
+
+        /* SDK JSON showcase */
+        .dev-hint { font-size: 17px; line-height: 24px; color: var(--mute); margin: -8px 0 20px; letter-spacing: -0.01em; }
+        #devLog { background: var(--canvas); border: 1px solid var(--hairline); border-radius: 8px; height: 300px; overflow-y: auto; padding: 16px; font-family: var(--mono); font-size: 14px; line-height: 21px; letter-spacing: 0; }
+        #devLog:empty::after { content: "// Live SDK payload — JSON emitted on every detected event."; color: var(--mute); }
+        #devLog pre { margin: 0 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--hairline); white-space: pre-wrap; color: var(--body); }
+        #devLog pre:last-child { border-bottom: none; }
+
+        .status { margin-top: 32px; color: var(--mute); font-family: var(--mono); font-size: 14px; letter-spacing: 1.2px; text-transform: uppercase; }
+
+        /* Theme toggle — fixed top-right pill, matches the button language. */
+        #themeToggle {
+            position: fixed; top: 24px; right: 24px; z-index: 10;
+            font-family: var(--mono); font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase;
+            color: var(--mute); background: var(--canvas-card);
+            border: 1px solid var(--hairline-soft); border-radius: 9999px;
+            padding: 8px 16px; cursor: pointer; transition: 0.18s;
+        }
+        #themeToggle:hover { color: var(--ink); border-color: var(--accent); }
+
+        /* Bright, visible scrollbars on the scrollable panels — signal to the
+           user that there's more content to scroll through. */
+        #alertFeed, #devLog { scrollbar-width: thin; }
+        #alertFeed { scrollbar-color: var(--critical) transparent; }
+        #devLog   { scrollbar-color: var(--accent) transparent; }
+        #alertFeed::-webkit-scrollbar, #devLog::-webkit-scrollbar { width: 10px; }
+        #alertFeed::-webkit-scrollbar-track, #devLog::-webkit-scrollbar-track { background: var(--canvas-soft); border-radius: 9999px; }
+        #alertFeed::-webkit-scrollbar-thumb, #devLog::-webkit-scrollbar-thumb { border-radius: 9999px; border: 2px solid var(--canvas-card); }
+        #alertFeed::-webkit-scrollbar-thumb { background: var(--critical); }
+        #devLog::-webkit-scrollbar-thumb { background: var(--accent); }
+        #alertFeed::-webkit-scrollbar-thumb:hover { background: #ff8a8a; }
+        #devLog::-webkit-scrollbar-thumb:hover { background: #3fe0b6; }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>Live Care Monitor Demo<span style="font-size: 16px; color: #888; font-weight: normal;">(Powered by Auris SDK)</span></h1>
-    <button id="startBtn">Start Listening</button>
-    
-    <div id="volumeContainer">
-        <div id="volumeBar"></div>
+<button id="themeToggle">☀ Light</button>
+<div class="wrap">
+    <header>
+        <p class="eyebrow"><span class="wordmark">Auris</span><span class="sub">SDK</span></p>
+        <h1>Live Care Monitor</h1>
+        <p>Real-time acoustic event detection for care environments.</p>
+    </header>
+
+    <div class="controls">
+        <button id="startBtn">Start Listening</button>
+        <div id="volumeContainer"><div id="volumeBar"></div></div>
     </div>
-    
-    <div id="uiLog"></div>
-    
-    <div class="dev-note">// RAW SDK PAYLOAD: Developers pipe this JSON into custom UIs or databases.</div>
-    <div id="devLog"></div>
+
+    <div class="legend">
+        <span><i class="dot c"></i>Critical — respond now</span>
+        <span><i class="dot u"></i>Urgent — prompt check</span>
+        <span><i class="dot a"></i>Advisory — logged for review</span>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h2>Live Alerts</h2>
+            <div id="alertFeed"></div>
+        </div>
+        <div class="card">
+            <h2>SDK Output</h2>
+            <div class="dev-hint">The JSON your system receives per event — pipe into dashboards, records, or notifications.</div>
+            <div id="devLog"></div>
+        </div>
+    </div>
+
+    <div class="status" id="status">Idle</div>
 </div>
+
 <script>
+    // --- Theme toggle (dark default / bright) — persisted across reloads ---
+    const themeToggle = document.getElementById('themeToggle');
+    function applyTheme(light) {
+        document.body.classList.toggle('light', light);
+        themeToggle.textContent = light ? "☾ Dark" : "☀ Light";
+        try { localStorage.setItem('auris-theme', light ? 'light' : 'dark'); } catch (e) {}
+    }
+    applyTheme((() => { try { return localStorage.getItem('auris-theme') === 'light'; } catch (e) { return false; } })());
+    themeToggle.addEventListener('click', () => applyTheme(!document.body.classList.contains('light')));
+
     const startBtn = document.getElementById('startBtn');
-    const uiLogDiv = document.getElementById('uiLog');
-    const devLogDiv = document.getElementById('devLog');
+    const alertFeed = document.getElementById('alertFeed');
+    const devLog = document.getElementById('devLog');
+    const statusDiv = document.getElementById('status');
     const volumeContainer = document.getElementById('volumeContainer');
     const volumeBar = document.getElementById('volumeBar');
     let socket, audioContext, processor, globalStream;
 
-    function logStatus(msg) {
-        uiLogDiv.innerHTML = `<div style="color: #888; margin-bottom: 10px;">> ${msg}</div>` + uiLogDiv.innerHTML;
-        devLogDiv.innerHTML += `<div style="color: #888; margin-bottom: 10px;">> ${msg}</div>`;
-        devLogDiv.scrollTop = devLogDiv.scrollHeight;
-    }
+    // Per-tier presentation, keyed off the tier the server sends.
+    const TIERS = {
+        CRITICAL: { cls: "critical", label: "Critical" },
+        URGENT:   { cls: "urgent",   label: "Urgent" },
+        ADVISORY: { cls: "advisory", label: "Advisory" },
+    };
+
+    function setStatus(msg) { statusDiv.textContent = msg; }
 
     startBtn.addEventListener('click', async () => {
         if (audioContext) { stopListening(); return; }
-        
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-        audioContext.resume(); 
-
+        audioContext.resume();
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            globalStream = stream;
-            
-            const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
-            const wsUrl = wsProtocol + window.location.host + "/ws";
-            
-            socket = new WebSocket(wsUrl);
-
+            globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            socket = new WebSocket("ws://localhost:8000");
             socket.onopen = () => {
-                logStatus("🟢 Connected to hardware & monitoring for priority events...");
+                setStatus("Connected — monitoring");
                 startBtn.textContent = "Stop Listening";
-                startBtn.style.background = "#cf6679";
-                volumeContainer.style.display = "block"; 
-                startAudioProcessing(stream);
+                startBtn.classList.add("live");
+                volumeContainer.style.display = "block";
+                startAudioProcessing(globalStream);
             };
-
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const confPct = Math.round(data.confidence * 100);
-                
-                // 1. GENERATE USER UI (Color Badges)
-                let displayHtml = "";
-                if (confPct >= 70) {
-                    if (data.group === 1) {
-                        displayHtml = `<span style="background: #cf6679; color: #fff; padding: 4px 8px; border-radius: 4px; font-weight: bold;">🚨 ${data.class} (${confPct}%)</span>`;
-                    } else if (data.group === 2) {
-                        displayHtml = `<span style="background: #ffb74d; color: #000; padding: 4px 8px; border-radius: 4px; font-weight: bold;">🩺 ${data.class} (${confPct}%)</span>`;
-                    }
-                } else {
-                    displayHtml = `<span style="color: #888;">${data.class} (${confPct}% - Accuracy < 70%)</span>`;
-                }
-                
-                uiLogDiv.innerHTML = `<div style="margin-bottom: 10px; font-size: 15px;">> ${displayHtml}</div>` + uiLogDiv.innerHTML;
-
-                // 2. GENERATE SDK PAYLOAD (JSON)
-                const sdkPayload = {
-                    eventId: "evt_" + Math.random().toString(36).substring(2, 9),
-                    timestamp: new Date().toISOString(),
-                    audioEvent: {
-                        classification: data.class,
-                        confidenceScore: confPct,
-                        isActionable: confPct >= 70,
-                        priorityLevel: data.group === 1 ? "CRITICAL" : (data.group === 2 ? "MONITOR" : "LOW")
-                    }
-                };
-
-                const jsonString = JSON.stringify(sdkPayload, null, 2);
-                let devColor = "#888"; 
-                if (confPct >= 70) {
-                    if (data.group === 1) devColor = "#cf6679";
-                    else if (data.group === 2) devColor = "#ffb74d";
-                }
-                
-                devLogDiv.innerHTML += `<pre style="color: ${devColor};">${jsonString}</pre>`;
-                devLogDiv.scrollTop = devLogDiv.scrollHeight; 
-            };
-
-            socket.onerror = (error) => {
-                logStatus("❌ ERROR: Connection failed.");
-            };
-            
-            socket.onclose = () => {
-                logStatus("Connection closed.");
-                stopListening();
-            };
-
-        } catch (err) { logStatus("Error: " + err.message); }
+            socket.onmessage = (event) => renderEvent(JSON.parse(event.data));
+            socket.onerror = () => setStatus("Connection failed — is the server running?");
+            socket.onclose = () => { setStatus("Connection closed"); stopListening(); };
+        } catch (err) { setStatus("Error: " + err.message); }
     });
+
+    function renderEvent(data) {
+        const tier = TIERS[data.tier] || TIERS.ADVISORY;
+        const confPct = Math.round((data.confidence || 0) * 100);
+
+        // 1. Alert card — confidence intentionally NOT shown. The server only
+        // forwards confident detections; the UI presents them cleanly by tier.
+        const el = document.createElement('div');
+        el.className = "alert " + tier.cls;
+        el.innerHTML = `
+            <div class="rail"></div>
+            <div class="body">
+                <div class="title">${data.category || data.class}</div>
+                <div class="meta">${data.class}</div>
+            </div>
+            <span class="tierTag">${tier.label}</span>`;
+        alertFeed.prepend(el);
+        while (alertFeed.children.length > 30) alertFeed.lastChild.remove();
+
+        // 2. SDK JSON payload — confidence kept here (developer-facing raw data).
+        const payload = {
+            eventId: "evt_" + Math.random().toString(36).substring(2, 9),
+            timestamp: new Date().toISOString(),
+            audioEvent: {
+                category: data.category || data.class,
+                tier: data.tier || "ADVISORY",
+                confidenceScore: confPct,
+                priorityGroup: data.group
+            }
+        };
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(payload, null, 2);
+        devLog.appendChild(pre);
+        devLog.scrollTop = devLog.scrollHeight;
+    }
 
     function startAudioProcessing(stream) {
         const source = audioContext.createMediaStreamSource(stream);
         processor = audioContext.createScriptProcessor(4096, 1, 1);
         source.connect(processor);
         processor.connect(audioContext.destination);
-
         processor.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            
+            const input = e.inputBuffer.getChannelData(0);
             let sum = 0;
-            for (let i = 0; i < inputData.length; i++) {
-                sum += inputData[i] * inputData[i];
-            }
-            let rms = Math.sqrt(sum / inputData.length);
-            let volumePct = Math.min(100, rms * 400); 
-            volumeBar.style.width = volumePct + '%';
-
+            for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+            volumeBar.style.width = Math.min(100, Math.sqrt(sum / input.length) * 400) + '%';
             if (socket && socket.readyState === WebSocket.OPEN) {
-                const int16Buffer = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    int16Buffer[i] = Math.min(1, Math.max(-1, inputData[i])) * 0x7FFF;
-                }
-                socket.send(int16Buffer.buffer);
+                const buf = new Int16Array(input.length);
+                for (let i = 0; i < input.length; i++) buf[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF;
+                socket.send(buf.buffer);
             }
         };
     }
 
     function stopListening() {
         startBtn.textContent = "Start Listening";
-        startBtn.style.background = "#03dac6";
+        startBtn.classList.remove("live");
         volumeContainer.style.display = "none";
         volumeBar.style.width = "0%";
         if (processor) processor.disconnect();
@@ -162,6 +306,7 @@
         if (globalStream) globalStream.getTracks().forEach(t => t.stop());
         if (socket) socket.close();
         audioContext = null;
+        setStatus("Idle");
     }
 </script>
 </body>
