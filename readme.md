@@ -50,9 +50,19 @@ python server.py
 
 Wait for `AST Model loaded successfully!` before connecting.
 
-**2. Open the frontend:**
+**2. Serve the frontend:**
 
-Open `index.html` directly in your browser (double-click it, or drag it into a browser window). Click **Start Listening** and allow microphone access.
+The simplest option is to open `index.html` directly in your browser (double-click it, or drag it into a browser window).
+
+Alternatively, serve it over a local HTTP server (recommended — avoids any `file://` quirks):
+
+```bash
+python3 -m http.server 5500
+```
+
+Then visit [http://localhost:5500](http://localhost:5500) in your browser.
+
+Either way, click **Start Listening** and allow microphone access.
 
 > The frontend connects over plain `ws://localhost:8000`. Microphone access and local WebSockets are permitted on `localhost`/`file://` origins without HTTPS, so no certificates are required for the local demo.
 
