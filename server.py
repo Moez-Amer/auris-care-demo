@@ -9,8 +9,11 @@ from signal_utils import CooldownGate
 # --- Demo tuning knobs -------------------------------------------------------
 # Only events at/above this confidence reach the UI. The terminal still logs
 # everything above the model's lower TERMINAL_DETECTION_FLOOR (see model.py),
-# so the two floors are now genuinely different. Tune for your room/mic.
-UI_CONFIDENCE_FLOOR = 0.30
+# so the two floors are genuinely different. Kept just above the terminal floor
+# because AST scores 1 s windows modestly (it expects ~10 s clips); the silence
+# gate in model.py — not a high floor — is what suppresses room noise. Raise
+# toward 0.25 for fewer/cleaner cards, lower toward 0.10 if real events get cut.
+UI_CONFIDENCE_FLOOR = 0.15
 # Per-category minimum gap between UI alerts, so a sustained sound (a held
 # alarm, a long cry) shows as ONE clean card instead of one per window.
 COOLDOWN_SECONDS = 3.0
